@@ -1,0 +1,222 @@
+---
+# Ansible Playbook for Databricks Authentication Setup
+# This playbook helps set up authentication for Databricks workspace
+
+- name: Setup Databricks Authentication
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    workspace_url: "{{ lookup('env', 'DATABRICKS_WORKSPACE_URL') | default('') }}"
+
+  tasks:
+    - name: Check if workspace URL is available
+      fail:
+        msg: "Please set DATABRICKS_WORKSPACE_URL environment variable or run create-databricks-workspace.yml first"
+      when: workspace_url == ""
+
+    - name: Display authentication setup instructions
+      debug:
+        msg:
+          - "🔐 Databricks Authentication Setup"
+          - "======================================="
+          - ""
+          - "You need to create a Personal Access Token (PAT) for authentication."
+          - ""
+          - "📋 Steps to create a Personal Access Token:"
+          - "1. Open your Databricks workspace: {{ workspace_url }}"
+          - "2. Click on your username in the top-right corner"
+          - "3. Select 'User Settings'"
+          - "4. Go to 'Access tokens' tab"
+          - "5. Click 'Generate new token'"
+          - "6. Enter a comment (e.g., 'PySpark Examples')"
+          - "7. Set lifetime (e.g., 90 days)"
+          - "8. Click 'Generate'"
+          - "9. Copy the token (you won't see it again!)"
+          - ""
+          - "🔧 After creating the token, set it as an environment variable:"
+          - "   export DATABRICKS_ACCESS_TOKEN='your-token-here'"
+          - ""
+          - "🛡️  Security Best Practices:"
+          - "   - Store token securely (use Azure Key Vault in production)"
+          - "   - Set appropriate token lifetime"
+          - "   - Never commit tokens to version control"
+          - "   - Use service principals for production workloads"
+
+    - name: Create authentication script
+      copy:
+        content: |
+          #!/bin/bash
+
+          # Databricks Authentication Setup Script
+          # Generated: {{ ansible_date_time.iso8601 }}
+
+          echo "🔐 Setting up Databricks Authentication"
+          echo "======================================"
+
+          # Check if token is already set
+          if [ -n "$DATABRICKS_ACCESS_TOKEN" ]; then
+              echo "✅ DATABRICKS_ACCESS_TOKEN is already set"
+              echo "   Token preview: ${DATABRICKS_ACCESS_TOKEN:0:10}..."
+          else
+              echo "❌ DATABRICKS_ACCESS_TOKEN is not set"
+              echo ""
+              echo "Please create a Personal Access Token:"
+              echo "1. Open: {{ workspace_url }}"
+              echo "2. User Settings → Access tokens → Generate new token"
+              echo "3. Copy the token and run:"
+              echo "   export DATABRICKS_ACCESS_TOKEN='your-token-here'"
+              echo ""
+              echo "Or add it to your shell profile:"
+              echo "   echo 'export DATABRICKS_ACCESS_TOKEN=\"your-token-here\"' >> ~/.bashrc"
+              exit 1
+          fi
+
+          # Test the connection
+          echo ""
+          echo "🧪 Testing Databricks connection..."
+
+          response=$(curl -s -w "%{http_code}" \
+            -H "Authorization: Bearer $DATABRICKS_ACCESS_TOKEN" \
+            "{{ workspace_url }}/api/2.0/clusters/list" \
+            -o /tmp/databricks_test.json)
+
+          if [ "$response" = "200" ]; then
+              echo "✅ Authentication successful!"
+              echo "📋 Available clusters:"
+              cat /tmp/databricks_test.json | python3 -m json.tool 2>/dev/null || echo "   (Unable to parse cluster list)"
+          else
+              echo "❌ Authentication failed (HTTP $response)"
+              echo "   Please check your token and try again"
+              exit 1
+          fi
+
+          # Clean up
+          rm -f /tmp/databricks_test.json
+
+          echo ""
+          echo "🎉 Databricks authentication is working!"
+          echo "You can now run:"
+          echo "   ansible-playbook create-databricks-cluster.yml"
+        dest: "./ansible/setup-auth.sh"
+        mode: "0755"
+
+    - name: Create environment template
+      copy:
+        content: |
+          # Databricks Environment Configuration Template
+          # Copy this file to .env and fill in your values
+
+          # Workspace Configuration (auto-filled by Ansible)
+          DATABRICKS_WORKSPACE_URL={{ workspace_url }}
+
+          # Authentication (you need to fill this in)
+          DATABRICKS_ACCESS_TOKEN=your-personal-access-token-here
+
+          # Optional: Cluster Configuration
+          DATABRICKS_CLUSTER_ID=your-cluster-id-here
+
+          # Optional: Azure Configuration
+          AZURE_SUBSCRIPTION_ID=your-subscription-id
+          AZURE_TENANT_ID=your-tenant-id
+          AZURE_CLIENT_ID=your-client-id
+          AZURE_CLIENT_SECRET=your-client-secret
+
+          # Usage:
+          # 1. Copy this file: cp env.template .env
+          # 2. Fill in your values
+          # 3. Load environment: source .env
+        dest: "./env.template"
+        mode: "0644"
+
+    - name: Create Databricks connection helper for Python
+      copy:
+        content: |
+          """
+          Databricks Connection Helper
+          Provides utilities for connecting to Databricks from PySpark examples
+          """
+
+          import os
+          from typing import Optional, Dict, Any
+
+          def get_databricks_config() -> Dict[str, Any]:
+              """Get Databricks configuration from environment variables"""
+              config = {
+                  'workspace_url': os.getenv('DATABRICKS_WORKSPACE_URL'),
+                  'access_token': os.getenv('DATABRICKS_ACCESS_TOKEN'),
+                  'cluster_id': os.getenv('DATABRICKS_CLUSTER_ID'),
+              }
+              
+              # Validate required configuration
+              if not config['workspace_url']:
+                  raise ValueError("DATABRICKS_WORKSPACE_URL environment variable not set")
+              if not config['access_token']:
+                  raise ValueError("DATABRICKS_ACCESS_TOKEN environment variable not set")
+                  
+              return config
+
+          def create_databricks_spark_session(app_name: str = "PySpark-Databricks"):
+              """Create a Spark session connected to Databricks cluster"""
+              try:
+                  from databricks.connect import DatabricksSession
+                  config = get_databricks_config()
+                  
+                  # Create Databricks session
+                  spark = DatabricksSession.builder \
+                      .appName(app_name) \
+                      .remote(
+                          host=config['workspace_url'],
+                          token=config['access_token'],
+                          cluster_id=config['cluster_id']
+                      ) \
+                      .getOrCreate()
+                      
+                  print(f"✅ Connected to Databricks cluster: {config['cluster_id']}")
+                  return spark
+                  
+              except ImportError:
+                  print("❌ databricks-connect not installed. Install with:")
+                  print("   pip install databricks-connect")
+                  raise
+              except Exception as e:
+                  print(f"❌ Failed to connect to Databricks: {e}")
+                  raise
+
+          def test_connection() -> bool:
+              """Test connection to Databricks"""
+              try:
+                  spark = create_databricks_spark_session("ConnectionTest")
+                  # Simple test query
+                  result = spark.sql("SELECT 'Hello Databricks!' as message").collect()
+                  print(f"✅ Connection test successful: {result[0]['message']}")
+                  return True
+              except Exception as e:
+                  print(f"❌ Connection test failed: {e}")
+                  return False
+        dest: "./shared/databricks_connection.py"
+        mode: "0644"
+
+    - name: Display final instructions
+      debug:
+        msg:
+          - "🔐 Authentication Setup Complete!"
+          - ""
+          - "📋 Next Steps:"
+          - "1. Run the authentication script:"
+          - "   ./ansible/setup-auth.sh"
+          - ""
+          - "2. Or manually set your token:"
+          - "   export DATABRICKS_ACCESS_TOKEN='your-token-here'"
+          - ""
+          - "3. Test the connection:"
+          - "   python3 -c 'from shared.databricks_connection import test_connection; test_connection()'"
+          - ""
+          - "4. Create your compute cluster:"
+          - "   ansible-playbook ansible/create-databricks-cluster.yml"
+          - ""
+          - "📁 Files created:"
+          - "   - ansible/setup-auth.sh (authentication helper)"
+          - "   - env.template (environment variables template)"
+          - "   - shared/databricks_connection.py (Python connection helper)"

@@ -1,0 +1,16 @@
+# Ansible Requirements for Azure Databricks Automation
+# Install with: ansible-galaxy install -r requirements.yml
+
+collections:
+  - name: azure.azcollection
+    version: ">=1.15.0"
+  - name: community.general
+    version: ">=5.0.0"
+
+roles: []
+# Python dependencies (install with pip):
+# pip install ansible
+# pip install azure-cli
+# pip install azure-identity
+# pip install azure-mgmt-databricks
+# pip install requests

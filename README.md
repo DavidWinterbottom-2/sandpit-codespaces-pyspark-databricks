@@ -7,8 +7,9 @@ A comprehensive collection of PySpark examples showcasing streaming, Delta Lake,
 ### Option 1: GitHub Codespaces (Recommended)
 1. **Open in Codespaces**: Click the green "Code" button and select "Open with Codespaces"
 2. **Wait for setup**: The devcontainer will automatically install all dependencies
-3. **Activate environment**: Choose your project-specific conda environment
-4. **Run examples**: Navigate to any project directory and run the examples
+3. **SSH Keys** (Optional): For Git operations, see [SSH Setup Guide](.devcontainer/SSH_SETUP.md)
+4. **Activate environment**: Choose your project-specific conda environment
+5. **Run examples**: Navigate to any project directory and run the examples
 
 ### Option 2: Local Development
 1. **Clone the repository**: `git clone <repo-url>`

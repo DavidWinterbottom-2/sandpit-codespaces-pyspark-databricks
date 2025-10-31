@@ -1,0 +1,172 @@
+---
+# Ansible Playbook for Creating Databricks Compute Cluster
+# This playbook creates a standard compute cluster in the Databricks workspace
+
+- name: Create Databricks Compute Cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # Load workspace configuration
+    workspace_url: "{{ lookup('env', 'DATABRICKS_WORKSPACE_URL') | default('') }}"
+    access_token: "{{ lookup('env', 'DATABRICKS_ACCESS_TOKEN') | default('') }}"
+
+    # Cluster Configuration
+    cluster_name: "pyspark-standard-cluster"
+    spark_version: "13.3.x-scala2.12" # Latest LTS with Spark 3.4.1
+    node_type_id: "Standard_DS3_v2" # 4 cores, 14 GB RAM
+    driver_node_type_id: "Standard_DS3_v2"
+
+    # Scaling Configuration
+    min_workers: 1
+    max_workers: 3
+    enable_autoscaling: true
+
+    # Performance & Cost Optimization
+    autotermination_minutes: 120 # Auto-terminate after 2 hours
+    enable_elastic_disk: true
+    disk_size_gb: 64
+
+    # Cluster Libraries (optional)
+    cluster_libraries:
+      - pypi:
+          package: "databricks-connect"
+      - pypi:
+          package: "pandas>=1.5.0"
+      - pypi:
+          package: "numpy>=1.21.0"
+
+  pre_tasks:
+    - name: Check for required environment variables
+      fail:
+        msg: "Please set DATABRICKS_WORKSPACE_URL and DATABRICKS_ACCESS_TOKEN environment variables"
+      when: workspace_url == "" or access_token == ""
+
+    - name: Display cluster configuration
+      debug:
+        msg:
+          - "Creating Databricks Cluster with configuration:"
+          - "Cluster Name: {{ cluster_name }}"
+          - "Spark Version: {{ spark_version }}"
+          - "Node Type: {{ node_type_id }}"
+          - "Workers: {{ min_workers }}-{{ max_workers }} (autoscaling: {{ enable_autoscaling }})"
+          - "Auto-termination: {{ autotermination_minutes }} minutes"
+
+  tasks:
+    - name: Create Databricks Cluster
+      uri:
+        url: "{{ workspace_url }}/api/2.0/clusters/create"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ access_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          cluster_name: "{{ cluster_name }}"
+          spark_version: "{{ spark_version }}"
+          node_type_id: "{{ node_type_id }}"
+          driver_node_type_id: "{{ driver_node_type_id }}"
+          num_workers: "{{ min_workers if not enable_autoscaling else omit }}"
+          autoscale:
+            min_workers: "{{ min_workers if enable_autoscaling else omit }}"
+            max_workers: "{{ max_workers if enable_autoscaling else omit }}"
+          auto_termination_minutes: "{{ autotermination_minutes }}"
+          enable_elastic_disk: "{{ enable_elastic_disk }}"
+          disk_spec:
+            disk_type:
+              azure_disk_volume_type: "PREMIUM_LRS"
+            disk_size: "{{ disk_size_gb }}"
+          azure_attributes:
+            availability: "SPOT_WITH_FALLBACK_AZURE" # Cost optimization
+            first_on_demand: 1
+            spot_bid_max_price: -1
+          spark_conf:
+            "spark.sql.adaptive.enabled": "true"
+            "spark.sql.adaptive.coalescePartitions.enabled": "true"
+            "spark.sql.execution.arrow.pyspark.enabled": "true"
+          custom_tags:
+            Environment: "Development"
+            Project: "PySpark-Examples"
+            CreatedBy: "Ansible"
+        status_code: 200
+      register: cluster_result
+
+    - name: Wait for cluster to be ready
+      uri:
+        url: "{{ workspace_url }}/api/2.0/clusters/get"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ access_token }}"
+        body_format: form-urlencoded
+        body:
+          cluster_id: "{{ cluster_result.json.cluster_id }}"
+      register: cluster_status
+      until: cluster_status.json.state == "RUNNING"
+      retries: 30
+      delay: 30
+
+    - name: Install cluster libraries
+      uri:
+        url: "{{ workspace_url }}/api/2.0/libraries/install"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ access_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          cluster_id: "{{ cluster_result.json.cluster_id }}"
+          libraries: "{{ cluster_libraries }}"
+        status_code: 200
+      when: cluster_libraries is defined and cluster_libraries | length > 0
+
+    - name: Save cluster information
+      copy:
+        content: |
+          # Databricks Cluster Information
+          # Generated: {{ ansible_date_time.iso8601 }}
+
+          DATABRICKS_CLUSTER_ID={{ cluster_result.json.cluster_id }}
+          DATABRICKS_CLUSTER_NAME={{ cluster_name }}
+          DATABRICKS_CLUSTER_STATE={{ cluster_status.json.state }}
+          DATABRICKS_SPARK_VERSION={{ spark_version }}
+          DATABRICKS_DRIVER_NODE_TYPE={{ driver_node_type_id }}
+          DATABRICKS_WORKER_NODE_TYPE={{ node_type_id }}
+          DATABRICKS_MIN_WORKERS={{ min_workers }}
+          DATABRICKS_MAX_WORKERS={{ max_workers }}
+
+          # Connection Details
+          DATABRICKS_JDBC_URL={{ cluster_status.json.jdbc_port }}
+          DATABRICKS_ODBC_URL={{ cluster_status.json.odbc_params.hostname }}:{{ cluster_status.json.odbc_params.port }}
+        dest: "./databricks-cluster.env"
+        mode: "0600"
+
+    - name: Update Python configuration with cluster details
+      lineinfile:
+        path: "./shared/databricks_config.py"
+        regexp: "^DATABRICKS_CLUSTER_ID ="
+        line: 'DATABRICKS_CLUSTER_ID = "{{ cluster_result.json.cluster_id }}"'
+        create: yes
+
+    - name: Display success message
+      debug:
+        msg:
+          - "🎉 Databricks Cluster Created Successfully!"
+          - ""
+          - "📋 Cluster Details:"
+          - "   Name: {{ cluster_name }}"
+          - "   ID: {{ cluster_result.json.cluster_id }}"
+          - "   State: {{ cluster_status.json.state }}"
+          - "   Spark Version: {{ spark_version }}"
+          - "   Workers: {{ min_workers }}-{{ max_workers }}"
+          - ""
+          - "🔗 Connection Information:"
+          - "   Workspace: {{ workspace_url }}"
+          - "   Cluster URL: {{ workspace_url }}/#setting/clusters/{{ cluster_result.json.cluster_id }}/configuration"
+          - ""
+          - "💾 Configuration saved to:"
+          - "   - databricks-cluster.env"
+          - "   - shared/databricks_config.py (updated)"
+          - ""
+          - "🚀 Ready to use! Run your PySpark examples with:"
+          - "   source databricks-cluster.env"
