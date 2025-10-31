@@ -1,0 +1,30 @@
+name: delta-lake-local
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip=23.3
+  - openjdk=11 # Downgrade to Java 11 for better compatibility
+  - jupyter=1.0
+  - notebook=7.0
+  - ipykernel=6.25
+  - pandas=2.1
+  - numpy=1.24
+  - matplotlib=3.7
+  - seaborn=0.12
+  - pyarrow=13.0
+  - boto3=1.29
+  - requests=2.31
+  - pyyaml=6.0
+  - pytest=7.4
+  - black=23.9
+  - pylint=2.17
+  - pip:
+      - pyspark==3.4.1 # Downgrade for better Delta Lake compatibility
+      - py4j==0.10.9.7 # Match PySpark 3.4.1 requirement
+      # Note: No databricks-connect for local development
+      - delta-spark==2.4.0 # Compatible with PySpark 3.4.1
+      - deltalake==0.10.1 # Compatible version
+      - mlflow==2.8.0
+      - python-dotenv==1.0.0

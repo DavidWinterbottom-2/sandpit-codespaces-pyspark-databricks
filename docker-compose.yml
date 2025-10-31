@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  pyspark-dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    container_name: pyspark-development
+    volumes:
+      - .:/workspace
+      - pyspark-data:/workspace/data
+      - pyspark-logs:/workspace/logs
+    ports:
+      - "4040:4040"   # Spark UI
+      - "8080:8080"   # Spark Master UI
+      - "8888:8888"   # Jupyter Notebook
+      - "9092:9092"   # Kafka
+    environment:
+      - PYTHONPATH=/workspace/shared
+      - SPARK_LOCAL_IP=0.0.0.0
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+volumes:
+  pyspark-data:
+  pyspark-logs:

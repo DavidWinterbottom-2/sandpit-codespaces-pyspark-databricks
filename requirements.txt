@@ -1,0 +1,39 @@
+# PySpark and core dependencies
+pyspark==3.5.0
+py4j==0.10.9.7
+
+# Data processing
+pandas==2.1.4
+numpy==1.24.4
+pyarrow==13.0.0
+
+# Jupyter and development
+jupyter==1.0.0
+notebook==7.0.6
+ipykernel==6.25.2
+
+# Streaming dependencies
+kafka-python==2.0.2
+confluent-kafka==2.3.0
+websocket-client==1.6.4
+
+# Delta Lake
+delta-spark==3.0.0
+
+# Databricks and Unity Catalog
+databricks-connect==13.3.2
+databricks-sdk==0.12.0
+
+# Visualization
+matplotlib==3.7.2
+seaborn==0.12.2
+
+# Utilities
+requests==2.31.0
+pyyaml==6.0.1
+boto3==1.29.7
+
+# Development tools
+pytest==7.4.3
+black==23.9.1
+pylint==2.17.7
