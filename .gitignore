@@ -133,15 +133,16 @@ spark-warehouse/
 metastore_db/
 derby.log
 *.parquet
-*.json
 checkpoint/
 checkpoints/
 
-# Data files (but keep directory structure)
+# Data files (but keep directory structure and allow config files)
 data/input/*
 !data/input/.gitkeep
+!data/input/README.md
 data/output/*
 !data/output/.gitkeep
+!data/output/README.md
 data/delta/*
 !data/delta/.gitkeep
 data/warehouse/*
